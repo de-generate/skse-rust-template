@@ -1,17 +1,13 @@
 //! Character encoding shenanigans. Bethesda is very bad at utf-8, I am told.
 
 use cxx::CxxVector;
-use encoding::label::encoding_from_whatwg_label;
 use encoding::DecoderTrap;
+use encoding::label::encoding_from_whatwg_label;
 
 /// This is a silly papyrus example. We choose to return -1 to signal
 /// failure because our use case is as array indexes in papyrus.
 pub fn string_to_int(number: String) -> i32 {
-    if let Ok(parsed) = number.parse::<i32>() {
-        parsed
-    } else {
-        -1
-    }
+    number.parse::<i32>().unwrap_or(-1)
 }
 
 // To test in game: install daegon
@@ -20,37 +16,35 @@ pub fn string_to_int(number: String) -> i32 {
 
 /// Use this for null-terminated C strings.
 pub fn cstr_to_utf8(bytes_ffi: &CxxVector<u8>) -> String {
-    let bytes: Vec<u8> = bytes_ffi.iter().copied().collect();
-    let bytes = if bytes.ends_with(&[0]) {
-        let chopped = bytes.len() - 1;
-        let mut tmp = bytes.clone();
-        tmp.truncate(chopped);
-        tmp
-    } else {
-        bytes
-    };
-    convert_to_utf8(bytes)
+    let mut bytes = bytes_ffi.iter().copied().collect::<Vec<_>>();
+
+    if bytes.ends_with(&[0]) {
+        bytes.truncate(bytes.len() - 1);
+    }
+
+    convert_to_utf8(&bytes)
 }
 
 /// Get a valid Rust representation of this Windows codepage string data by hook or by crook.
-pub fn convert_to_utf8(bytes: Vec<u8>) -> String {
+pub fn convert_to_utf8(bytes: &[u8]) -> String {
     if bytes.is_empty() {
         return String::new();
     }
 
-    let (encoding, confidence, _language) = chardet::detect(&bytes);
+    let (encoding, confidence, _language) = chardet::detect(bytes);
     let encoding = if confidence < 0.75 {
         "iso-8859-1".to_string() // yeah, well.
     } else {
         encoding
     };
+
     if let Some(coder) = encoding_from_whatwg_label(chardet::charset2encoding(&encoding)) {
-        if let Ok(utf8string) = coder.decode(&bytes, DecoderTrap::Replace) {
-            return utf8string.to_string();
+        if let Ok(utf8string) = coder.decode(bytes, DecoderTrap::Replace) {
+            return utf8string;
         }
     }
 
-    String::from_utf8_lossy(&bytes).to_string()
+    String::from_utf8_lossy(bytes).to_string()
 }
 
 #[cfg(test)]
@@ -60,13 +54,13 @@ mod tests {
     #[test]
     fn utf8_data_is_untouched() {
         let example = "Sacrÿfev Tëliimi";
-        let converted = convert_to_utf8(example.as_bytes().to_vec());
+        let converted = convert_to_utf8(example.as_bytes());
         assert_eq!(converted, example);
         let ex2 = "おはよう";
-        let convert2 = convert_to_utf8(ex2.as_bytes().to_vec());
+        let convert2 = convert_to_utf8(ex2.as_bytes());
         assert_eq!(convert2, ex2);
         let ex3 = "Zażółć gęślą jaźń";
-        let convert3 = convert_to_utf8(ex3.as_bytes().to_vec());
+        let convert3 = convert_to_utf8(ex3.as_bytes());
         assert_eq!(convert3, ex3);
     }
 
@@ -81,7 +75,7 @@ mod tests {
         ];
         assert!(String::from_utf8(bytes.clone()).is_err());
         let utf8_version = "Sacrÿfev Tëliimi".to_string();
-        let converted = convert_to_utf8(bytes.clone());
+        let converted = convert_to_utf8(&bytes);
         assert_eq!(converted, utf8_version);
     }
 
@@ -98,7 +92,7 @@ mod tests {
         let utf8_version =
             "ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖ×ØÙÚÛÜÝÞßàáâãäåæçèéêëìíîïðñòóôõö÷øùúûüýþÿ".to_string();
         assert!(String::from_utf8(bytes.clone()).is_err());
-        let converted = convert_to_utf8(bytes.clone());
+        let converted = convert_to_utf8(&bytes);
         assert_eq!(converted.len(), utf8_version.len());
         assert_eq!(converted, utf8_version);
     }
