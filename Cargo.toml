@@ -20,3 +20,5 @@ cxx-build = "1.0.143"
 
 [profile.release]
 debug = true
+lto = true
+codegen-units = 1

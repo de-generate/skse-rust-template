@@ -2,6 +2,9 @@
 
 RMDIR dist /S /Q
 
+cargo build --release
+if %ERRORLEVEL% NEQ 0 exit 1
+
 cmake --build --preset vs2022-windows --config Release
 if %ERRORLEVEL% NEQ 0 exit 1
 
